@@ -1,0 +1,114 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "DeploymentID": {
+      "type": "String",
+      "metadata": {
+        "description": "Unique suffix used to name all resources (must be lowercase alphanumeric, no dashes/underscores, kept short so the storage account name stays <= 24 chars)."
+      }
+    },
+    "foundryModelCapacity": {
+      "defaultValue": 200,
+      "type": "Int",
+      "metadata": {
+        "description": "TPM (thousands of tokens/min) capacity for the GPT-5.2 deployment."
+      }
+    }
+  },
+  "variables": {
+    "location": "[resourceGroup().location]",
+    "foundryAccountName": "[concat('foundry-', parameters('DeploymentID'))]",
+    "foundryProjectName": "[concat('proj-', parameters('DeploymentID'))]",
+    "foundryDeploymentName": "gpt-5.2"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.CognitiveServices/accounts",
+      "apiVersion": "2025-06-01",
+      "name": "[variables('foundryAccountName')]",
+      "location": "[variables('location')]",
+      "sku": {
+        "name": "S0"
+      },
+      "kind": "AIServices",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "customSubDomainName": "[variables('foundryAccountName')]",
+        "publicNetworkAccess": "Enabled",
+        "allowProjectManagement": true
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "foundryProjectAndDeployments",
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts', variables('foundryAccountName'))]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "resources": [
+            {
+              "type": "Microsoft.CognitiveServices/accounts/projects",
+              "apiVersion": "2025-06-01",
+              "name": "[concat(variables('foundryAccountName'), '/', variables('foundryProjectName'))]",
+              "location": "[variables('location')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {}
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2025-06-01",
+              "name": "[concat(variables('foundryAccountName'), '/', variables('foundryDeploymentName'))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('foundryAccountName'), variables('foundryProjectName'))]"
+              ],
+              "sku": {
+                "name": "GlobalStandard",
+                "capacity": "[parameters('foundryModelCapacity')]"
+              },
+              "properties": {
+                "model": {
+                  "format": "OpenAI",
+                  "name": "gpt-5.2",
+                  "version": "2025-12-11"
+                },
+                "raiPolicyName": "Microsoft.Default"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "foundryAccountName": {
+      "type": "String",
+      "value": "[variables('foundryAccountName')]"
+    },
+    "foundryEndpoint": {
+      "type": "String",
+      "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', variables('foundryAccountName'))).endpoint]"
+    },
+    "foundryProjectName": {
+      "type": "String",
+      "value": "[variables('foundryProjectName')]"
+    },
+    "gptDeploymentName": {
+      "type": "String",
+      "value": "[variables('foundryDeploymentName')]"
+    },
+    "region": {
+      "type": "String",
+      "value": "[variables('location')]"
+    }
+  }
+}
